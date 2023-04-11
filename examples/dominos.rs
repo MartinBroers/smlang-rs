@@ -33,6 +33,16 @@ impl StateMachineContext for Context {
     fn to_d5(&mut self, _state_data: &Option<Events>) -> Option<Events> {
         Some(Events::ToD5)
     }
+
+    fn on_exit_d0(&mut self) {
+        println!("Exiting state D0");
+    }
+    fn on_exit_d1(&mut self) {
+        println!("Exiting state D1");
+    }
+    fn on_entry_d4(&mut self) {
+        println!("Entering state D4");
+    }
 }
 
 // The macros does not derive Copy/Clone traits to the events, so we need to add them so that the

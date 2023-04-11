@@ -4,8 +4,9 @@ use crate::parser::data::Lifetimes;
 use crate::parser::ParsedStateMachine;
 use proc_macro2;
 use proc_macro2::Span;
-use quote::quote;
+use quote::{format_ident, quote};
 use std::vec::Vec;
+use string_morph;
 use syn::{punctuated::Punctuated, token::Paren, Type, TypeTuple};
 
 pub fn generate_code(sm: &ParsedStateMachine) -> proc_macro2::TokenStream {
@@ -195,6 +196,7 @@ pub fn generate_code(sm: &ParsedStateMachine) -> proc_macro2::TokenStream {
 
     let mut guard_list = proc_macro2::TokenStream::new();
     let mut action_list = proc_macro2::TokenStream::new();
+    let mut entry_list = proc_macro2::TokenStream::new();
     for (state, value) in transitions.iter() {
         // create the state data token stream
         let state_data = match sm.state_data.data_types.get(state) {
@@ -202,7 +204,19 @@ pub fn generate_code(sm: &ParsedStateMachine) -> proc_macro2::TokenStream {
             None => quote! {},
         };
 
+        let entry_ident = format_ident!("on_entry_{}", string_morph::to_snake_case(state));
+        entry_list.extend(quote! {
+            #[allow(missing_docs)]
+            fn #entry_ident(&mut self){}
+        });
+        let exit_ident = format_ident!("on_exit_{}", string_morph::to_snake_case(state));
+        entry_list.extend(quote! {
+           #[allow(missing_docs)]
+           fn #exit_ident(&mut self){}
+        });
+
         value.iter().for_each(|(event, value)| {
+
 
             // get output state lifetimes
             let state_lifetimes = if let Some(lifetimes) = sm.state_data.lifetimes.get(&value.out_state.to_string()) {
@@ -340,10 +354,11 @@ pub fn generate_code(sm: &ParsedStateMachine) -> proc_macro2::TokenStream {
         .zip(
             actions
                 .iter()
-                .zip(out_states.iter().zip(guard_action_parameters.iter())),
+                .zip(in_states.iter()
+                .zip(out_states.iter().zip(guard_action_parameters.iter()))),
         )
         .map(
-            |(guards, (actions, (out_states, guard_action_parameters)))| {
+            |(guards, (actions, (in_state, (out_states, guard_action_parameters))))| {
                 guards
                     .iter()
                     .zip(
@@ -351,17 +366,25 @@ pub fn generate_code(sm: &ParsedStateMachine) -> proc_macro2::TokenStream {
                             .iter()
                             .zip(out_states.iter().zip(guard_action_parameters.iter())),
                     )
-                    .map(|(guard, (action, (out_state, g_a_param)))| {
+                    .map(|(guard, (action,  (out_state, g_a_param )))| {
+                        let out_state_string = &out_state.to_string()[0..out_state.to_string().find('(').unwrap_or_else(|| out_state.to_string().len())];
+                        let entry_ident = format_ident!("on_entry_{}",string_morph::to_snake_case(out_state_string ));
+                        let in_state_string = &in_state.to_string()[0..in_state.to_string().find('(').unwrap_or_else(|| in_state.to_string().len())];
+                        let exit_ident = format_ident!("on_exit_{}",string_morph::to_snake_case(in_state_string));
                         if let Some(g) = guard {
                             if let Some(a) = action {
                                 quote! {
                                     self.context.#g(#temporary_context_call #g_a_param).map_err(Error::GuardFailed)?;
                                     let _data = self.context.#a(#temporary_context_call #g_a_param);
+                                    self.context_mut().#exit_ident();
+                                    self.context_mut().#entry_ident();
                                     self.state = States::#out_state;
                                 }
                             } else {
                                 quote! {
                                     self.context.#g(#temporary_context_call #g_a_param).map_err(Error::GuardFailed)?;
+                                    self.context_mut().#exit_ident();
+                                    self.context_mut().#entry_ident();
                                     self.state = States::#out_state;
                                 }
                             }
@@ -369,10 +392,14 @@ pub fn generate_code(sm: &ParsedStateMachine) -> proc_macro2::TokenStream {
                             if let Some(a) = action {
                                 quote! {
                                     let _data = self.context.#a(#temporary_context_call #g_a_param);
+                                    self.context_mut().#exit_ident();
+                                    self.context_mut().#entry_ident();
                                     self.state = States::#out_state;
                                 }
                             } else {
                                 quote! {
+                                    self.context_mut().#exit_ident();
+                                    self.context_mut().#entry_ident();
                                     self.state = States::#out_state;
                                 }
                             }
@@ -448,6 +475,7 @@ pub fn generate_code(sm: &ParsedStateMachine) -> proc_macro2::TokenStream {
             #guard_error
             #guard_list
             #action_list
+            #entry_list
         }
 
         /// List of auto-generated states.
