@@ -7,7 +7,7 @@
 use smlang::statemachine;
 
 /// Event data
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 pub struct MyEventData(pub u32);
 
 statemachine! {

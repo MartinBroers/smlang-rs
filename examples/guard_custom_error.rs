@@ -14,11 +14,11 @@ pub enum GuardError {
 }
 
 /// Event data
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 pub struct MyEventData(pub u32);
 
 /// State data
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 pub struct MyStateData(pub u32);
 
 statemachine! {
